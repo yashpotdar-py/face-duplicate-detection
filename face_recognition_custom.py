@@ -13,7 +13,7 @@ from rich import print as rprint
 console = Console()
 
 # === PARAMETERS ===
-folder_path = "images"  # <- Your images folder path
+folder_path = "data/Thumbnails"  # <- Your images folder path
 save_faces_folder = "detected_faces"  # <- Folder to save detected faces
 similarity_threshold = 0.35
 blur_threshold = 100
