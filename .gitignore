@@ -259,3 +259,6 @@ dlib_face_recognition_resnet_model_*.dat
 
 # CUDA cache
 .nv/
+
+detected_faces
+images
