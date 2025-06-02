@@ -262,3 +262,4 @@ dlib_face_recognition_resnet_model_*.dat
 
 detected_faces
 images
+batch_results

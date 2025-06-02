@@ -10,7 +10,7 @@ echo "==========================================================================
 echo ""
 echo "📸 Step 1: Running face recognition..."
 echo "--------------------------------------"
-python face_recognition.py
+python face_recognition_custom.py
 
 # Check if face_recognition.py executed successfully
 if [ $? -eq 0 ]; then
