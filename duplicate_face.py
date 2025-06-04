@@ -11,7 +11,7 @@ from rich.panel import Panel
 from datetime import datetime
 
 console = Console()
-BATCH_SIZE = 100
+BATCH_SIZE = 6161
 
 
 def get_system_usage():
@@ -42,6 +42,13 @@ def process_batch(image_batch, known_face_encodings, known_face_paths, duplicate
         try:
             image = face_recognition.load_image_file(image_path)
             face_encodings = face_recognition.face_encodings(image)
+
+            # If no faces detected, treat as unique image
+            if len(face_encodings) == 0:
+                unique_images.add(image_path)
+                unique_count += 1
+                progress.update(process_task, unique=unique_count)
+                continue
 
             total_face_count += len(face_encodings)
             progress.update(process_task, faces=total_face_count)
@@ -173,10 +180,9 @@ def find_duplicate_faces_in_directory(directory):
     console.print(Panel.fit(
         f"✨ [bold green]Processing Complete![/]\n"
         f"📸 Total Images Processed: [cyan]{processed_count}[/]\n"
-        f"👤 Total Faces Detected: [yellow]{total_face_count}[/]\n"
+        f"👤 Total Faces Detected: [yellow]{len(unique_images)+duplicate_count}[/]\n"
         f"🆕 Unique Faces: [green]{len(unique_images)}[/]\n"
         f"🔁 Duplicate Faces: [red]{duplicate_count}[/]\n"
-        f"⚠️ Corrupted/Missing Images: [magenta]{len(corrupted_images)}[/]\n"
         f"⏳ Total Time: [blue]{total_time:.2f} seconds[/]\n"
         f"🖥 CPU Usage: [blue]{cpu_usage}%[/]\n"
         f"💾 RAM Usage: [purple]{ram_usage}%[/]\n"
@@ -186,13 +192,13 @@ def find_duplicate_faces_in_directory(directory):
     ))
 
 
-directory_path = 'detected_faces'
+directory_path = 'detected_images/detected_images'
 
 console.print(Panel.fit(
     "🚀 [bold blue]Starting Batch Duplicate Face Detection...[/]",
     border_style="blue",
     title="Face Recognition System",
-    subtitle="Mera Baccha Hai Tu"
+    subtitle="Summary"
 ))
 
 find_duplicate_faces_in_directory(directory_path)
