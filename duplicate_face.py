@@ -25,7 +25,7 @@ def get_system_usage():
     return cpu_usage, ram_usage, gpu_usage
 
 
-def process_batch(image_batch, known_face_encodings, known_face_paths, duplicates, unique_images, corrupted_images, progress, process_task, start_process_time):
+def process_batch(image_batch, known_face_encodings, known_face_paths, duplicates, unique_images, corrupted_images, no_face_images, progress, process_task, start_process_time):
     total_face_count = 0
     duplicate_count = 0
     processed_count = 0
@@ -46,6 +46,7 @@ def process_batch(image_batch, known_face_encodings, known_face_paths, duplicate
             # If no faces detected, treat as unique image
             if len(face_encodings) == 0:
                 unique_images.add(image_path)
+                no_face_images.add(image_path)
                 unique_count += 1
                 progress.update(process_task, unique=unique_count)
                 continue
@@ -83,17 +84,22 @@ def process_batch(image_batch, known_face_encodings, known_face_paths, duplicate
         except Exception as e:
             console.print(f"[red]Error processing {image_path}: {str(e)}[/]")
             corrupted_images.append(image_path)
+            unique_images.add(image_path)  # Add corrupted images to unique set
+            unique_count += 1
+            progress.update(process_task, unique=unique_count)
 
     return total_face_count, duplicate_count, processed_count
 
 
-def save_results(batch_number, duplicates, corrupted_images):
-    """Saves duplicate and corrupted face data to text and CSV files."""
+def save_results(batch_number, duplicates, corrupted_images, unique_images):
+    """Saves duplicate, unique, and corrupted face data to text and CSV files."""
     batch_dir = "batch_results"
     os.makedirs(batch_dir, exist_ok=True)
 
     text_file = os.path.join(batch_dir, f"output_batch_{batch_number}.txt")
     csv_file = os.path.join(batch_dir, f"duplicates_batch_{batch_number}.csv")
+    unique_csv_file = os.path.join(
+        batch_dir, f"unique_faces_batch_{batch_number}.csv")
     corrupted_file = os.path.join(
         batch_dir, f"corrupted_batch_{batch_number}.txt")
 
@@ -112,6 +118,21 @@ def save_results(batch_number, duplicates, corrupted_images):
             for dup in dups:
                 writer.writerow([original, dup])
 
+    # Save unique faces to CSV (including no faces and corrupted images)
+    with open(unique_csv_file, "w", newline="") as unique_csvfile:
+        writer = csv.writer(unique_csvfile)
+        writer.writerow(["Image Path", "Filename", "Status"])
+
+        # Add unique images with faces
+        for unique_path in unique_images:
+            filename = os.path.basename(unique_path)
+            writer.writerow([unique_path, filename, "Unique Face"])
+
+        # Add corrupted images
+        for corrupted_path in corrupted_images:
+            filename = os.path.basename(corrupted_path)
+            writer.writerow([corrupted_path, filename, "Corrupted/Unreadable"])
+
     with open(corrupted_file, "w") as corrupted_txt:
         corrupted_txt.write(
             f"Corrupted or unreadable images in batch {batch_number}:\n")
@@ -119,7 +140,7 @@ def save_results(batch_number, duplicates, corrupted_images):
             corrupted_txt.write(f"{img}\n")
 
     console.print(
-        f"[green]Results saved: {text_file}, {csv_file}, {corrupted_file}[/]")
+        f"[green]Results saved: {text_file}, {csv_file}, {unique_csv_file}, {corrupted_file}[/]")
 
 
 def find_duplicate_faces_in_directory(directory):
@@ -127,6 +148,7 @@ def find_duplicate_faces_in_directory(directory):
     known_face_paths = []
     duplicates = {}
     unique_images = set()
+    no_face_images = set()
     corrupted_images = []  # Track unreadable images
     total_face_count = 0
     duplicate_count = 0
@@ -163,16 +185,48 @@ def find_duplicate_faces_in_directory(directory):
 
             batch_faces, batch_duplicates, batch_processed = process_batch(
                 batch, known_face_encodings, known_face_paths, duplicates,
-                unique_images, corrupted_images, progress, process_task, start_process_time
+                unique_images, corrupted_images, no_face_images, progress, process_task, start_process_time
             )
 
             total_face_count += batch_faces
             duplicate_count += batch_duplicates
             processed_count += batch_processed
 
-            save_results(batch_number, duplicates, corrupted_images)
+            save_results(batch_number, duplicates,
+                         corrupted_images, unique_images)
 
             batch_number += 1
+
+    # Save final consolidated unique faces CSV
+    final_unique_csv = os.path.join("batch_results", "all_unique_faces.csv")
+    with open(final_unique_csv, "w", newline="") as final_unique_csvfile:
+        writer = csv.writer(final_unique_csvfile)
+        writer.writerow(["Image Path", "Filename", "Directory", "Status"])
+
+        # Add unique images with faces
+        for unique_path in unique_images:
+            if unique_path not in corrupted_images and unique_path not in no_face_images:
+                filename = os.path.basename(unique_path)
+                directory_name = os.path.basename(os.path.dirname(unique_path))
+                writer.writerow(
+                    [unique_path, filename, directory_name, "Unique Face"])
+
+        # Add images with no faces
+        for no_face_path in no_face_images:
+            filename = os.path.basename(no_face_path)
+            directory_name = os.path.basename(os.path.dirname(no_face_path))
+            writer.writerow(
+                [no_face_path, filename, directory_name, "No Face Detected"])
+
+        # Add corrupted images
+        for corrupted_path in corrupted_images:
+            filename = os.path.basename(corrupted_path)
+            directory_name = os.path.basename(os.path.dirname(corrupted_path))
+            writer.writerow([corrupted_path, filename,
+                            directory_name, "Corrupted/Unreadable"])
+
+    console.print(
+        f"[green]Final unique faces CSV saved: {final_unique_csv}[/]")
 
     total_time = time.time() - start_process_time
     cpu_usage, ram_usage, gpu_usage = get_system_usage()
@@ -180,8 +234,10 @@ def find_duplicate_faces_in_directory(directory):
     console.print(Panel.fit(
         f"✨ [bold green]Processing Complete![/]\n"
         f"📸 Total Images Processed: [cyan]{processed_count}[/]\n"
-        f"👤 Total Faces Detected: [yellow]{len(unique_images)+duplicate_count}[/]\n"
-        f"🆕 Unique Faces: [green]{len(unique_images)}[/]\n"
+        f"👤 Total Faces Detected: [yellow]{total_face_count}[/]\n"
+        f"🆕 Unique Faces: [green]{len(unique_images) - len(no_face_images) - len(corrupted_images)}[/]\n"
+        f"👻 No Face Detected: [orange]{len(no_face_images)}[/]\n"
+        f"💥 Corrupted Images: [magenta]{len(corrupted_images)}[/]\n"
         f"🔁 Duplicate Faces: [red]{duplicate_count}[/]\n"
         f"⏳ Total Time: [blue]{total_time:.2f} seconds[/]\n"
         f"🖥 CPU Usage: [blue]{cpu_usage}%[/]\n"
